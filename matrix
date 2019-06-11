@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+## Mathew McDade
+## OSU CS344 Spring 2019
+## Matrix operations bash script.
+## This program uses Unix utilities and bash builtins to provide various matrix operation
+##	functions from the command line interface using argument(s) passed by file or by stdin. 
+##	Dims prints matrix dimensions to stdout. Transpose prints the matrix transposed about the 
+##	main diagonal. Mean prints the mean vector of the matrix. Add prints the sum of two matrices 
+##	of equal dimensions. Multiply prints the matrix product of two matrices.
+
+## matrix functions:
+#matrix dims [MATRIX] : prints the dimensions(#rows #cols) of the matrix passed by argument
+#	or stdin.
+dims() {
+	if [ $# -ne 1 ]		#If more than one argument, exit.
+	then
+		echo "dims: Too many arguments." >&2
+		exit 1
+	elif ! test -r "$1"		#If file is not readable, exit.
+	then
+		echo "dims: Input file $1 not readable." >&2
+		exit 2
+	fi
+						#Using word count utility,
+	wrds=$(wc -w < "$1")	#get total integers in file,
+	rows=$(wc -l < "$1")	#get line length,
+	((cols=wrds/rows))		#take advantage of rectangular guarantee to calculate columns.
+	echo "$rows $cols"
+	#printf "%i %i\n" "$rows" "$cols"	#alternate printf output style.
+	exit 0
+}
+
+#matrix transpose [MATRIX] : prints the matrix reflected along the main diagonal.
+transpose() {
+	if [ $# -ne 1 ]		#If more than one argument, exit.
+	then
+		echo "transpose: Too many arguments." >&2
+		exit 1
+	elif ! test -r "$1"		#If file is not readable, exit.
+	then
+		echo "transpose: Input file $1 not readable." >&2
+		exit 2
+	fi
+
+	TMP="tempfile$$"
+	columns=$(dims "$1" | cut -d' ' -f 2)	#Get matrix dims, then cut out columns from output. 
+
+	for((i=1;i<=columns;i++))		#C-style for loops work in expression parens.
+	do
+		cut -f"$i" "$1" | paste -s -d'\t' >> $TMP	#Cut each column and paste it as a 
+	done										#tab delimited row.
+	cat $TMP
+	#printf "%s\n" "$(<$TMP)"	#alternate printf output style.
+	rm -f $TMP
+	exit 0
+}
+
+#matrix mean [MATRIX] : given an MxN matrix, prints a 1xN row vector where each element is the
+#	average of the values in the corresponding column in the matrix.
+mean() {
+	if [ $# -ne 1 ]		#If more than one argument, exit.
+	then
+		echo "mean: Too many arguments." >&2
+		exit 1
+	elif ! test -r "$1"		#If file not readable, exit.
+	then
+		echo "mean: Input file $1 not readable." >&2
+		exit 2
+	fi
+
+	TMP1="tempfile1$$"		
+	TMP2="tempfile2$$"
+
+	transpose "$1" | cat >> $TMP1		#Transposing makes iterating over columns easier.
+
+	while read -r line				#Actually while read column of matrix argument.
+	do
+		sum=0
+		count=0
+		for val in $line
+		do
+			((sum+=val))
+			((count+=1))
+		done
+		#Rounding average calc referenced from assignment hints:
+		#https://oregonstate.instructure.com/courses/1719569/assignments/7518681
+		((avg=(sum+(count/2)*((sum>0)*2-1))/count))
+		echo $avg >> $TMP2		#Write each column average to a temporary row.
+	done < $TMP1
+
+	transpose "$TMP2" | cat > $TMP1	#Transpose the single column of averages to a row vector.
+
+	cat $TMP1
+	rm -f $TMP1 $TMP2
+}
+
+#matrix add MATRIX_LEFT MATRIX_RIGHT : given two MxN matrices, prints an MxN matrix of the two
+#	matrices added element-wise. Returns an error if the two matrices have different dimensions.
+add() {
+	if [ $# -lt 2 ]				#If less than two arguments, exit. 
+	then
+		echo "add: Too few arguments." >&2
+		exit 1
+	elif [ $# -gt 2 ]				#If more than two arguments, exit.
+	then
+		echo "add: Too many arguments." >&2
+		exit 1
+	elif ! test -r "$1" || ! test -r "$1"	#If either argument isn't readable, exit.
+	then
+		echo "mean: Input files not readable." >&2
+		exit 2
+	else							#If argument dimensions not equal, exit.
+		#Want to find a better way to make this comparison than
+		#	calling dims twice.
+		read -r leftrows leftcolumns <<< "$(dims "$1" | cut -d' ' -f 1,2)"
+		read -r rightrows rightcolumns <<< "$(dims "$2" | cut -d' ' -f 1,2)"
+		if [ "$leftrows" != "$rightrows" ] || [ "$leftcolumns" != "$rightcolumns" ]
+		then
+			echo "add: Argument dimensions not equal." >&2
+			exit 2
+		fi
+	fi
+	
+	TMP1="tempfile1$$"
+	TMP2="tempfile2$$"
+	while read -r m1line <&3 && read -r m2line <&4 #Reading in from the two argument files.
+	do
+		:>$TMP1		#clear the tempfile.
+		for((i=1;i<=leftcolumns;i++))		#Using a creative for loop to cut each value from each
+		do							#corresponding line at the same time.
+			j=$(echo "$m1line" | cut -f"$i" -d'	')
+			k=$(echo "$m2line" | cut -f"$i" -d'	')
+			((sum=j+k))
+			echo $sum >> $TMP1			#Echo each sum to a tempfile column.
+		done
+		#Could use transpose function here, but this also works.
+		cut -f1 "$TMP1" | paste -s -d'\t' >> $TMP2	#Transpose the tempfile column to a row.
+	done 3<"$1" 4<"$2"
+	cat $TMP2
+	rm -f $TMP1 $TMP2
+}
+
+#matrix multiply MATRIX_LEFT MATRIX_RIGHT : given two matrices, MxN and NxP, prints the matrix
+#	product, MxP. A*B=AB != B*A=BA. Notes:rows(x1,x2,x3)*cols(y1,y2,y3)=x1*y1+x2*y2+x3*y3
+multiply() {
+	if [ $# -lt 2 ]			#If less than two arguments, exit.
+	then
+		echo "add: Too few arguments." >&2
+		exit 1
+	elif [ $# -gt 2 ]			#If more than two arguments, exit.
+	then
+		echo "add: Too many arguments." >&2
+		exit 1
+	elif ! test -r "$1" || ! test -r "$1"	#If either file not readable, exit.
+	then
+		echo "mean: Input files not readable." >&2
+		exit 2
+	else
+		#If matrices not compatible for multiply, exit.
+		read -r leftrows leftcolumns <<< "$(dims "$1" | cut -d' ' -f 1,2)"
+		read -r rightrows rightcolumns <<< "$(dims "$2" | cut -d' ' -f 1,2)"
+		if [ "$leftcolumns" != "$rightrows" ]
+		then
+			echo "add: Argument dimensions not compatible for multiplication." >&2
+			exit 2
+		fi
+	fi
+
+	TMP1="tempfile1$$"
+	TMP2="tempfile2$$"
+	TMP3="tempfile3$$"
+		
+	transpose "$2" | cat > $TMP1		#Transposing the second matrix makes iteration easier.
+	
+	while read -r line		#Reads each row from from the left matrix.
+	do
+		:> $TMP2	#clear temp file.
+		while read -r col	#Nested while loop reads each column from the right matrix.
+		do
+			product=0
+			for ((j=1;j<=leftcolumns;j++))
+			do
+				lineval=$(echo "$line" | cut -f"$j" -d'	')
+				colval=$(echo "$col" | cut -f"$j" -d'	')
+				((product+=(lineval*colval)))		#Dot product is cumulative.
+			done
+			echo $product >> $TMP2
+		done < "$TMP1"
+		transpose "$TMP2" | cat >> $TMP3
+	done < "$1"
+	cat $TMP3
+	rm -f $TMP1 $TMP2 $TMP3
+	exit 0
+}
+
+##Trap Statement to catch interrupt, terminate, and hangup signals and remove temporary files.
+trap 'echo "SIGNAL Received, exiting script and removing temp files."; rm -f tempfile*$$; exit 1' SIGINT SIGTERM SIGHUP
+
+##Main function routing section:
+if [ $# == 1 ]							#If there is only one argument,
+then
+	if [ "$(type -t "$1")" = function ]	#check that the argument is a valid function,
+	then
+		TMPipe="tempfilepipe$$"
+		#trap the tempfile to rm when
+		#function called successfully.
+		trap 'rm -f $TMPipe' EXIT
+		while read -r line
+		do
+			echo "$line" >> $TMPipe		#write the stdin to a temp file,
+		done
+		$1 "$TMPipe"					#and call the function with the tempfile.
+	else
+		echo "matrix: operation $1 does not exist." >&2; exit 1
+	fi
+elif [ $# -gt 1 ]						#If there is more than one argument,
+then
+	if [ "$(type -t "$1")" = function ]	#check that the first argument is a valid function,
+	then
+		$1 "${@:2}"					#then call that function with all other arguments.
+	else
+		echo "matrix: operation $1 does not exist." >&2; exit 1
+	fi
+else
+	echo "matrix: no operation specified." >&2; exit 1	#if no arguments are given.
+fi
