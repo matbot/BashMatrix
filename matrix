@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 ## Mathew McDade
-## OSU CS344 Spring 2019
 ## Matrix operations bash script.
 ## This program uses Unix utilities and bash builtins to provide various matrix operation
 ##	functions from the command line interface using argument(s) passed by file or by stdin. 
