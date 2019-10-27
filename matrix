@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 ## Mathew McDade
 ## Matrix operations bash script.
+## Array Use Branch
 ## This program uses Unix utilities and bash builtins to provide various matrix operation
 ##	functions from the command line interface using argument(s) passed by file or by stdin. 
 ##	Dims prints matrix dimensions to stdout. Transpose prints the matrix transposed about the 
